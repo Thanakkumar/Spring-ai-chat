@@ -2,13 +2,13 @@ package com.example.aichat.Config;
 
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.context.annotation.Bean;
-import org.springframework.stereotype.Component;
+import org.springframework.context.annotation.Configuration;
 
-@Component
+@Configuration
 public class AiConfig {
 
     @Bean
-    public SimpleLoggerAdvisor simpleLoggerAdvisor(){
+    public SimpleLoggerAdvisor simpleLoggerAdvisor() {
         return new SimpleLoggerAdvisor();
     }
 
