@@ -1,80 +1,101 @@
 # spring-ai-integration
 
-Spring Boot integration demonstrating Spring AI chat client with **Ollama** (`qwen3.5:4b`), conversational memory, and logging advisors.
+Spring Boot 3.5+ integration showcasing modern **Spring AI (v1.0.3)** capabilities with **Ollama**, featuring conversational memory, tool/function calling, structured outputs, streaming, and vision.
+
+---
 
 ## Features
-- **Ollama Local LLM**: Integrates with local Ollama running `qwen3.5:4b` — no external API keys or cloud costs required.
-- **Provider-Agnostic Design**: Uses generic Spring AI `ChatModel` and `ChatClient` abstractions.
-- **Conversational Memory**: Maintains conversation state using `MessageChatMemoryAdvisor` backed by `ChatMemory`.
-- **Advisors & Logging**: Request/response logging via `SimpleLoggerAdvisor`.
-- **Multiple Endpoints**: Chat responses, memory retention, structured prompts, creative generation, and code generation.
 
-## Requirements
-- **JDK 17 or 21**
-- **Ollama** installed and running locally
-- **Model**: `qwen3.5:4b`
-  ```bash
-  ollama run qwen3.5:4b
-  ```
-- **Maven Wrapper**: Included (`mvnw` / `mvnw.cmd`)
+1. **Local & Private LLM Inference**: Powered by local Ollama (`llama3.2:1b` / `qwen3.5:4b`), completely offline with zero API keys or cloud costs.
+2. **Provider-Agnostic Core**: Uses Spring AI's generic `ChatModel` and `ChatClient` fluent API.
+3. **Multi-User Conversational Memory**: Stateful multi-turn chat with isolated conversation IDs (`chat_memory_conversation_id`) backed by `MessageChatMemoryAdvisor`.
+4. **Structured Outputs / Entity Extraction**: Direct mapping from LLM responses into strongly typed Java Records (`List<HotelRecommendation>`, `List<StockAnalysis>`) via `.entity(...)`.
+5. **Tool / Function Calling (`@Tool`)**: The LLM autonomously triggers Java backend functions (e.g., system clock, math calculations).
+6. **Reactive SSE Streaming**: Real-time Server-Sent Events via `Flux<String>` (`/ai/generateStream`) for instant Time to First Token.
+7. **Multimodal Vision**: Upload and inspect images using `MultipartFile` and Spring AI's media APIs (`/analyze-image`).
+8. **Parameterized Prompt Templates**: Dynamic variable substitution via `.param("key", value)`.
+9. **CPU Multi-Threading Optimized**: Tuned for low-latency CPU inference via `num-thread=4`.
 
-## Quick Start
+---
 
-### 1. Start Ollama and verify model
-Make sure Ollama is running and `qwen3.5:4b` is available:
-```powershell
-ollama list
-```
-If you need to pull it:
-```powershell
-ollama pull qwen3.5:4b
-```
+## Configuration (`application.properties`)
 
-### 2. Configure `application.properties`
-The default configuration connects to your local Ollama instance on port 11434:
 ```properties
 spring.application.name=spring-ai-integration
-server.port=8085
+server.port=8088
 
 # Ollama Configuration
 spring.ai.ollama.base-url=http://localhost:11434
-spring.ai.ollama.chat.options.model=qwen3.5:4b
+spring.ai.ollama.chat.options.model=llama3.2:1b
 spring.ai.ollama.chat.options.temperature=0.4
+spring.ai.ollama.chat.options.num-thread=4
 
 logging.level.org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor=DEBUG
 ```
 
-### 3. Run the Application
-Using Maven wrapper:
-```powershell
-.\mvnw.cmd spring-boot:run
-```
+> **Tip for Model Selection**:
+> - For **ultra-fast CPU performance (1-2s response)**: Use `llama3.2:1b` (`ollama pull llama3.2:1b`)
+> - For **vision & thinking capabilities**: Use `qwen3.5:4b` (`ollama pull qwen3.5:4b`)
 
-## API Endpoints
+---
 
-The server runs by default on port `8085`:
+## Endpoints Overview
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/ai/chatResponse` | Basic prompt returning full `ChatResponse` |
-| `GET` | `/ai/memory?message=...` | Conversational endpoint maintaining chat history |
-| `GET` | `/ai/webResponse` | Query recent AI tech topics |
-| `GET` | `/ai/stockTrends` | Financial analyst prompt analyzing market trends |
-| `GET` | `/ai/hotels` | Travel assistant prompt returning structured hotel recommendations |
-| `GET` | `/ai/creativeResponse` | Creative ideation with frequency penalty options |
-| `GET` | `/ai/generateCode` | Recursive Java code generation |
+| `POST` | `/ai/chat` | **Recommended**: Chat with per-user conversational memory (JSON body) |
+| `GET` | `/ai/memory?message=...&conversationId=...` | GET-based conversational memory query |
+| `GET` | `/ai/generateStream?message=...` | Server-Sent Events (SSE) token streaming |
+| `GET` | `/ai/hotels/structured` | Returns strongly-typed `List<HotelRecommendation>` |
+| `GET` | `/ai/stocks/structured` | Returns strongly-typed `List<StockAnalysis>` |
+| `GET` | `/ai/tools?question=...` | Autonomous Tool / Function Calling |
+| `GET` | `/ai/code?task=...&language=...` | Parameterized prompt template code generator |
+| `POST` | `/analyze-image` | Multimodal image + prompt analysis |
+| `GET` | `/ai/chatResponse` | Full `ChatResponse` with token usage and metadata |
+| `GET` | `/ai/generate?message=...` | Simple `Map<String, String>` response |
 
-### Example Request
+---
 
+## Example Usage
+
+### 1. Conversational Chat (`POST /ai/chat`)
 ```powershell
-# Chat with memory
-Invoke-RestMethod -Uri "http://localhost:8085/ai/memory?message=Hello! My name is Alice" -Method Get
-Invoke-RestMethod -Uri "http://localhost:8085/ai/memory?message=What is my name?" -Method Get
+# Message 1
+Invoke-RestMethod -Uri "http://localhost:8088/ai/chat" -Method Post `
+  -ContentType "application/json" `
+  -Body '{"message": "My name is Thanakkumar and I love Spring Boot", "conversationId": "user-42"}'
+
+# Message 2 (remembers previous context)
+Invoke-RestMethod -Uri "http://localhost:8088/ai/chat" -Method Post `
+  -ContentType "application/json" `
+  -Body '{"message": "What is my name and what do I love?", "conversationId": "user-42"}'
 ```
 
-## Testing
-
-Run unit & integration tests:
+### 2. Autonomous Tool Calling (`GET /ai/tools`)
+The LLM dynamically executes the Java tool `@Tool getCurrentDateTime()` and `@Tool multiply()`:
 ```powershell
+Invoke-RestMethod -Uri "http://localhost:8088/ai/tools?question=What is today's date and time and what is 500 multiplied by 25?" -Method Get
+```
+
+### 3. Structured Outputs (`GET /ai/hotels/structured`)
+Returns typed JSON array matching `HotelRecommendation.java`:
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8088/ai/hotels/structured" -Method Get
+```
+
+### 4. Real-time Streaming (`GET /ai/generateStream`)
+```powershell
+curl -N "http://localhost:8088/ai/generateStream?message=Write a short story about an AI developer"
+```
+
+---
+
+## Running the Application & Tests
+
+```powershell
+# Run the application
+.\mvnw.cmd spring-boot:run
+
+# Run the integration tests
 .\mvnw.cmd test
 ```
